@@ -1,47 +1,50 @@
-import { prisma } from "@/lib/prisma";
-import dayjs from "dayjs";
-import { NextApiRequest, NextApiResponse } from "next";
+import { prisma } from '@/lib/prisma'
+import dayjs from 'dayjs'
+import { NextApiRequest, NextApiResponse } from 'next'
 
-export default async function handle(req: NextApiRequest, res: NextApiResponse) {
+export default async function handle(
+  req: NextApiRequest,
+  res: NextApiResponse,
+) {
+  if (req.method != 'GET') {
+    return res.status(405).end
+  }
 
-    if (req.method != "GET") {
-        return res.status(405).end
-    }
+  const username = String(req.query.username)
+  const { year, month } = req.query
 
-    const username = String(req.query.username)
-    const { year, month } = req.query
+  if (!year || !month) {
+    return res.status(400).json({ message: 'Invalid year or month' })
+  }
 
-    if (!year || !month) {
-        return res.status(400).json({ message: "Invalid year or month" });
-    }
+  const user = await prisma.user.findUnique({
+    where: { username },
+  })
 
-    const user = await prisma.user.findUnique({
-        where: { username }
-    })
+  if (!user) {
+    return res.status(400).json({ message: 'Invallid user' })
+  }
 
-    if (!user) {
-        return res.status(400).json({ message: "Invallid user" });
-    }
+  const availableWeekDays = await prisma.userTimeInterval.findMany({
+    select: {
+      week_days: true,
+    },
+    where: {
+      user_Id: user.id,
+    },
+  })
 
-    const availableWeekDays = await prisma.userTimeInterval.findMany({
-        select: {
-            week_days: true
-        },
-        where: {
-            user_Id: user.id
-        }
-    })
+  const blockedWeekDays = [0, 1, 2, 3, 4, 5, 6].filter((weekDay) => {
+    return !availableWeekDays.some(
+      (availableWeekDays) => availableWeekDays.week_days == weekDay,
+    )
+  })
 
-    const blockedWeekDays = [0, 1, 2, 3, 4, 5, 6].filter(weekDay => {
-        return !availableWeekDays.some(
-            availableWeekDays => availableWeekDays.week_days == weekDay)
-    })
+  //
 
-    //
+  const yearMonth = `${year}-${String(month).padStart(2, '0')}`
 
-    const yearMonth = `${year}-${String(month).padStart(2, '0')}`
-
-    const blockedDatesRaw: Array<{date: number}> = await prisma.$queryRaw`
+  const blockedDatesRaw: Array<{ date: number }> = await prisma.$queryRaw`
 
     SELECT  EXTRACT(DAY FROM S.DATE) AS date,
             COUNT(S.date) as amount,
@@ -54,9 +57,7 @@ export default async function handle(req: NextApiRequest, res: NextApiResponse) 
     HAVING amount >= size
   `
 
-const blockedDates = blockedDatesRaw.map((item) => item.date)
+  const blockedDates = blockedDatesRaw.map((item) => item.date)
 
-
-  return res.json({blockedWeekDays, blockedDates  })
+  return res.json({ blockedWeekDays, blockedDates })
 }
-
